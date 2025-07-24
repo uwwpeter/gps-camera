@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GPS Map Camera</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background-color: #f4f4f4;
+      margin: 0;
+      padding: 0;
+    }
+    #cameraContainer {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+      margin: 20px auto;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    video, canvas {
+      width: 100%;
+      height: auto;
+    }
+    #overlay {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      color: white;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    #controls {
+      margin-top: 20px;
+    }
+    button, select {
+      padding: 10px 15px;
+      margin: 5px;
+      font-size: 16px;
+    }
+    #loadingMessage {
+      color: #555;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>📸 GPS Map Camera</h2>
+
+  <div id="cameraContainer">
+    <video id="video" autoplay></video>
+    <canvas id="canvas" style="display: none;"></canvas>
+    <div id="overlay">
+      <div id="locationText">📍 Fetching your location...</div>
+      <div id="datetimeText">📅 --/--/---- --:-- --</div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <label>Select Date: <input type="date" id="customDate"></label>
+    <label>Select Time: <input type="time" id="customTime"></label><br>
+    <button onclick="capturePhoto()">📷 Capture</button>
+    <a id="downloadLink" style="display:none;" download="captured-image.png">
+      <button>⬇️ Download Image</button>
+    </a>
+  </div>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const overlay = document.getElementById("overlay");
+    const locationText = document.getElementById("locationText");
+    const datetimeText = document.getElementById("datetimeText");
+    const downloadLink = document.getElementById("downloadLink");
+
+    // Start camera
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        video.srcObject = stream;
+      })
+      .catch(err => {
+        alert("Camera access denied: " + err.message);
+      });
+
+    // Get Location Once
+    navigator.geolocation.getCurrentPosition(async pos => {
+      const { latitude, longitude } = pos.coords;
+      let address = "";
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`);
+        const data = await res.json();
+        address = data.display_name;
+      } catch (err) {
+        address = "Location fetch failed";
+      }
+      locationText.textContent = `${address}
+Lat ${latitude.toFixed(5)}° Long ${longitude.toFixed(5)}°`;
+    }, err => {
+      locationText.textContent = "Location permission denied or failed.";
+    }, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    });
+
+    function formatDate(date) {
+      const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
+      return date.toLocaleDateString('en-GB', options);
+    }
+
+    function formatTime(date) {
+      let hours = date.getHours();
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      return `${hours}:${minutes} ${ampm}`;
+    }
+
+    function updateDateTimeOverlay() {
+      const dateInput = document.getElementById("customDate").value;
+      const timeInput = document.getElementById("customTime").value;
+      let date = new Date();
+      if (dateInput) {
+        const [year, month, day] = dateInput.split("-");
+        date.setFullYear(year, month - 1, day);
+      }
+      if (timeInput) {
+        const [hour, min] = timeInput.split(":");
+        date.setHours(hour, min);
+      }
+      datetimeText.textContent = `${formatDate(date)} ${formatTime(date)} GMT +05:30`;
+    }
+
+    function capturePhoto() {
+      updateDateTimeOverlay();
+      const ctx = canvas.getContext("2d");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // Draw overlay
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(0, canvas.height - 100, canvas.width, 100);
+      ctx.fillStyle = "white";
+      ctx.font = "16px Arial";
+      ctx.fillText(locationText.textContent, 10, canvas.height - 60);
+      ctx.fillText(datetimeText.textContent, 10, canvas.height - 30);
+      // Show download link
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.style.display = "inline-block";
+      });
+    }
+  </script>
+</body>
+</html>
